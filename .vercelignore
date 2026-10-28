@@ -1,0 +1,6 @@
+# only index.html and runner_v2.glb are deployed
+*.mp4
+*.png
+0bf2f690-3f3a-4521-b121-4bdceaf0b25a_white_mesh.glb
+runner.glb
+refs

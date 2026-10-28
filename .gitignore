@@ -1,0 +1,20 @@
+# secrets / local config
+.env
+.env.*
+*.pem
+*.key
+.vercel/
+
+# private source material and drafts, not part of the project
+*.mp4
+*.png
+refs/
+runner.glb
+0bf2f690-3f3a-4521-b121-4bdceaf0b25a_white_mesh.glb
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/

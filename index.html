@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Built to Run</title>
+<meta name="description" content="A scroll-driven 3D runner built with Three.js.">
+<meta property="og:title" content="Built to Run">
+<meta property="og:description" content="Scroll to make her run — a scroll-driven 3D runner built with Three.js.">
+<style>
+  :root { --bg: #0d0d0f; --fg: #f2f2f2; --muted: #8a8a92; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+  section { position: relative; z-index: 1; min-height: 100vh; display: flex; align-items: center; padding: 0 8vw; pointer-events: none; }
+  section.right { justify-content: flex-end; }
+  section .text { max-width: 420px; }
+  h1 { font-size: clamp(3rem, 9vw, 7rem); line-height: .95; letter-spacing: -.03em; }
+  h2 { font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1; letter-spacing: -.02em; margin-bottom: 1rem; }
+  p { color: var(--muted); }
+  #loader { position: fixed; inset: 0; z-index: 2; display: grid; place-items: center; color: var(--muted); transition: opacity .4s; }
+  @media (max-width: 700px) { section, section.right { justify-content: center; align-items: flex-end; padding: 0 16px 15vh; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="loader" role="status">Loading 0%</div>
+
+<section><div class="text"><h1>Built<br>to run.</h1><p>Scroll to start running.</p></div></section>
+<section class="right"><div class="text"><h2>Every stride.</h2><p>Your scroll is her pace — scroll back and she runs in reverse.</p></div></section>
+<section><div class="text"><h2>Up close.</h2><p>Fully rigged and textured, rendered live in your browser.</p></div></section>
+<section class="right"><div class="text"><h2>Keep going.</h2><p>Every angle, no clicks, no drag.</p></div></section>
+<section><div class="text"><h1>Fin.</h1></div></section>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const renderer = new THREE.WebGLRenderer({ canvas: c, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment()).texture;
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+camera.position.set(0, 0, 6);
+const light = new THREE.DirectionalLight(0xffffff, 1.5);
+light.position.set(2, 4, 3);
+scene.add(light);
+
+const pivot = new THREE.Group();
+scene.add(pivot);
+let mixer, run;
+const STRIDES = 40; // run cycles over the whole page
+new GLTFLoader().load('runner_v2.glb', ({ scene: model, animations }) => {
+  // center and fit to ~2.4 units tall
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  model.position.sub(box.getCenter(new THREE.Vector3()));
+  pivot.scale.setScalar(2.4 / size.y);
+  pivot.add(model);
+  mixer = new THREE.AnimationMixer(model);
+  run = mixer.clipAction(animations[0]);
+  run.play();
+  loader.style.opacity = 0;
+  setTimeout(() => loader.remove(), 400);
+}, e => {
+  if (e.total) loader.textContent = `Loading ${Math.round(e.loaded / e.total * 100)}%`;
+}, () => { loader.textContent = 'Could not load the 3D model.'; });
+
+// scroll keyframes: [scroll progress 0..1, x, y-rotation, camera z]
+const keys = [[0, 0, 0.4, 6], [0.25, -1.2, Math.PI / 2, 5], [0.5, 1.2, -Math.PI / 2, 3.5], [0.75, 0, 0.3, 9], [1, 0, Math.PI * 2 + 0.4, 6]];
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => t * t * (3 - 2 * t);
+function sample(p) {
+  let i = 0;
+  while (i < keys.length - 2 && p > keys[i + 1][0]) i++;
+  const [a, b] = [keys[i], keys[i + 1]];
+  const t = ease(THREE.MathUtils.clamp((p - a[0]) / (b[0] - a[0]), 0, 1));
+  return [1, 2, 3].map(k => lerp(a[k], b[k], t));
+}
+
+let target = 0, current = 0;
+addEventListener('scroll', () => {
+  target = scrollY / (document.documentElement.scrollHeight - innerHeight);
+}, { passive: true });
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+const mobile = matchMedia('(max-width: 700px)');
+renderer.setAnimationLoop(t => {
+  current = lerp(current, target, 0.08); // smooth scroll inertia
+  const [x, ry, z] = sample(current);
+  pivot.position.x = mobile.matches ? 0 : x;
+  pivot.position.y = mobile.matches ? 0.6 : 0;
+  pivot.rotation.y = ry;
+  if (mixer) mixer.setTime(current * run.getClip().duration * STRIDES); // scroll scrubs the run, reverse scroll runs backwards
+  camera.position.z = z;
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
